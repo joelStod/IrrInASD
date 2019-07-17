@@ -1,0 +1,307 @@
+---
+title: "ABC-I Internal Structure"
+author: "Joel Stoddard"
+date: "7/17/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages
+
+```{r }
+library('GPArotation')
+library('psych')
+library('lavaan')
+```
+
+## Import and Prepare Data
+
+```{r cars}
+# Read in and prepare data
+db<-read.table(file="../../Raw Data/Stoddard_937dataset_11.27.18_abc.txt",
+               sep="\t",header=TRUE,comment="")
+dbCV<-read.table(file="../../Raw Data/Stoddard_937dataset_11.27.18_edi.txt",
+                 sep="\t",header=TRUE,comment="")
+db[db==9999]<-NA
+db[db==8888]<-NA
+dbCV[dbCV==9999]<-NA
+dbCV[dbCV==8888]<-NA
+
+db<-merge(db,dbCV,by="familyid")
+
+hist(db$age, col='blue')
+table(db$a_csex)
+
+# Factor Analysis of Irritability Items
+ABC<-db[,1:61]
+ABC$Miss<-rowSums(is.na(db[,4:61]))
+
+# Remove anyone with missing responses on the ABC > 15%
+ABC<-subset(ABC,Miss<9) #n=758 (1 subj missing 14, 1 missing 49, 177 missing all)
+describe(ABC$age)
+table(ABC$a_csex)
+
+# Count by verbal ability
+table(db[db$familyid %in% ABC$familyid, 's_ados_module']>2)
+describe(db[db$familyid %in% ABC$familyid, 
+            c('s_vinecomposite','s_vinecommstand')])
+
+# Keep 50% for training, 50% for testing
+smp_size<-floor(0.50*nrow(ABC)) #379
+set.seed(252) #Randomly generated seed of 3 digits. sample(100:999,1)
+train_ind <- sample(seq_len(nrow(ABC)), size = smp_size)
+
+myTrain<-ABC[train_ind,4:61] #50% of sample = 379
+table(ABC[train_ind,'a_csex'])
+hist(ABC[train_ind,'age'],
+     main="Distribution of Age",
+     xlab="Age (Years)",
+     col='blue')
+mean(ABC[train_ind,'age'])
+sd(ABC[train_ind,'age'])
+
+myTest<-ABC[-train_ind,4:61] #50% of sample = 379
+table(ABC[-train_ind,'a_csex'])
+hist(ABC[-train_ind,'age'],
+     main="Distribution of Age",
+     xlab="Age (Years)",
+     col='blue')
+mean(ABC[-train_ind,'age'])
+sd(ABC[-train_ind,'age'])
+```
+
+##Exploratory Analysis
+
+```{r}
+#Explore
+splitHalf(myTrain[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)])
+abcI2<-omega(myTrain[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)],
+             nfactors=2, 
+             fm="mle", #occassional missingness
+             missing=FALSE) # don't impute
+# Expect a forced balance warning with 2 factor case (see help).
+abcI3<-omega(myTrain[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)],
+             nfactors=3, 
+             fm="mle", 
+             missing=FALSE)
+abcI4<-omega(myTrain[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)],
+            nfactors=4, 
+            fm="mle", 
+            missing=FALSE)
+abcI5<-omega(myTrain[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)],
+             nfactors=5, 
+             fm="mle", 
+             missing=FALSE)
+abcI2 # Compare with only general factor
+anova(abcI2,abcI3)
+anova(abcI3,abcI4)
+anova(abcI4,abcI5)
+
+# 4 factor best fit
+omega.diagram(abcI4, cex=1.2, cex.axis=1.3, 
+              e.size=0.25, digits=2,
+              main="")
+```
+
+## Confirmatory Analysis, with 4 Factors from EFA
+
+```{r}
+#Confirm
+splitHalf(myTest[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)])
+abcI_Test<-omegaSem(myTest[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)],
+                nfactors=4,
+                fm="mle", #occassional missingness
+                missing=FALSE, #don't impute
+                lavaan=TRUE) #use lavaan
+
+abcI_Test #Get ECV; use eigenvalues to confirm ECV and calculate other explained variance
+
+# May compare the fit$omegaSem$model$lavaan to compare it to teh model from abcI4 above and record as Model 1 below.
+# The training and testing samples differ in that the Mood Changes item, with crossloadings on factor 1 and 4 on EFA
+# is assigned to 4 on CFA. Otherwise models are nearly identical.
+omega.diagram(abcI_Test, cex=1.2, cex.axis=1.3, 
+              e.size=0.25, digits=2,
+              main="")
+
+# Calcuate the proportion of uncontaminated correlations to interpret ECV
+PUCd <- (15*14)/2
+PUC <- (PUCd-((6*5)/2 + 3*((3*2)/2)))/PUCd #correlations within each gropuing factor
+PUC #PUC = .77  # Acceptable
+
+#omegaSem reports ECV and wH, fit model in lavaan::cfa and get fit stats form output (below)
+ModelU = ' g =~ +a_abcselfinj2+a_abcaggres4+a_abcscream8+a_abctemper10+a_abcirrita14+a_abcyells19+a_abcdepres25+a_abcdemand29+a_abccriesmin34+a_abcmoodqu36+a_abccriesini41+a_abcbangsobj47+a_abchurtself50+a_abcviolenself52+a_abcnownway57 '
+
+Model1 = '  g =~ +a_abcselfinj2+a_abcaggres4+a_abcscream8+a_abctemper10+a_abcirrita14+a_abcyells19+a_abcdepres25+a_abcdemand29+a_abccriesmin34+a_abcmoodqu36+a_abccriesini41+a_abcbangsobj47+a_abchurtself50+a_abcviolenself52+a_abcnownway57
+            Tantrum=~  + a_abcaggres4 + a_abctemper10 + a_abcdemand29 + a_abcmoodqu36 + a_abcbangsobj47 + a_abcnownway57                                                                                                                          
+            SelfHarm=~  + a_abcselfinj2 + a_abchurtself50 + a_abcviolenself52                                                                                                                                                                      
+            Verbal=~  + a_abcscream8 + a_abcyells19 + a_abccriesini41                                                                                                                                                                            
+            NegAff=~  + a_abcirrita14 + a_abcdepres25 + a_abccriesmin34 '
+
+fitu<-cfa(ModelU, data=myTest[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)], 
+          sample.nobs=379,
+          orthogonal=TRUE,
+          std.lv=TRUE, 
+          missing="ML")
+summary(fitu, fit.measures=TRUE)
+
+fit1<-cfa(Model1, data=myTest[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)],
+          sample.nobs=379, 
+          orthogonal=TRUE,
+          std.lv=TRUE, 
+          missing="ML")
+summary(fit1, fit.measures=TRUE, standardized=TRUE)
+
+anova(fitu,fit1)
+
+# Repeat within interquartile age range
+summary(ABC$age)
+myAge<-ABC[ABC$age > 10.585 & ABC$age < 15.663,4:61] #50% of sample = 379
+fita<-cfa(Model1, data=myAge[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)], 
+          sample.nobs=379, orthogonal=TRUE,std.lv=TRUE, missing="ML")
+summary(fita, fit.measures=TRUE, standardized=TRUE)
+
+abcI_Age<-omegaSem(myAge[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)],
+                    nfactors=4,
+                    fm="mle", #occassional missingness
+                    poly=TRUE,
+                    missing=FALSE,
+                    lavaan=TRUE)
+
+# Post hoc analysis with polychoric correlations.
+fitp<-cfa(Model1, data=myTest[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)],
+          sample.nobs=379, 
+          ordered=c('a_abcselfinj2','a_abcaggres4','a_abcscream8','a_abctemper10',
+                    'a_abcirrita14','a_abcyells19','a_abcdepres25','a_abcdemand29',
+                    'a_abccriesmin34','a_abcmoodqu36','a_abccriesini41','a_abcbangsobj47',
+                    'a_abchurtself50','a_abcviolenself52','a_abcnownway57'),
+          orthogonal=TRUE,
+          std.lv=TRUE)
+summary(fitp, fit.measures=TRUE, standardized=TRUE)
+
+
+```
+
+## Bivariate Correlations
+
+```{r}
+# Bivariate Correlations
+
+# Create EDI Indices
+db$ediReactLongRaw<-rowSums(db[,c(
+  'a_edi1c',
+  'a_edi3c',
+  'a_edi4c',
+  'a_edi6c',
+  'a_edi7c',
+  'a_edi8c',
+  'a_edi10c',
+  'a_edi13c',
+  'a_edi19c',
+  'a_edi21c',
+  'a_edi24c',
+  'a_edi26c',
+  'a_edi27c',
+  'a_edi28c',
+  'a_edi34c',
+  'a_edi36c',
+  'a_edi38c',
+  'a_edi42c',
+  'a_edi46c',
+  'a_edi50c',
+  'a_edi52c',
+  'a_edi53c',
+  'a_edi58c',
+  'a_edi59c')]
+)
+
+db$ediReactShort<-rowSums(db[,c(
+  'a_edi3s',
+  'a_edi4s',
+  'a_edi19s',
+  'a_edi21s',
+  'a_edi34s',
+  'a_edi36s',
+  'a_edi46s')]
+) #Any missing will yield NA
+
+#Theta LUT
+tLUT<-c(-1.99,
+        -1.536,
+        -1.311,
+        -1.14,
+        -0.994,
+        -0.864,
+        -0.744,
+        -0.631,
+        -0.522,
+        -0.415,
+        -0.311,
+        -0.208,
+        -0.107,
+        -0.007,
+         0.092,
+         0.19,
+         0.289,
+         0.389,
+         0.489,
+         0.591,
+         0.694,
+         0.8,
+         0.909,
+         1.025,
+         1.15,
+         1.29,
+         1.455,
+         1.671,
+         2.105)
+
+db$ediReactTheta<-tLUT[db$ediReactShort+1] 
+  # Offset index EDI short goes from 0-28, 
+  # tLUT goes from 1-29
+
+db$ediDysphoria<-rowSums(db[,c(
+  'a_edi43c',
+  'a_edi51c',
+  'a_edi57c',
+  'a_edi63c',
+  'a_edi64c',
+  'a_edi31c')]
+)
+
+# Create CBCL Irritability Index
+db$cbclIrr<-rowSums(db[,c(
+  's_cbcl86',
+  's_cbcl87',
+  's_cbcl95')]
+)
+
+# Vineland standard scores of interest
+# Adaptive function = s_vinecomposite
+# Communication = s_vinecommstand
+
+# Split group on ADOS standard scores of interest
+# s_ados_module >= 3
+
+# Make a dataframe of vars of interest
+test_ind<-as.numeric(row.names(myTest))
+myCor<-data.frame(age = db[test_ind,'age'],
+                  ediReact = db[test_ind,'ediReactTheta'],
+                  ediDysph = db[test_ind,'ediDysphoria'],
+                  cbclIrr = db[test_ind,'cbclIrr'],
+                  vineComp = db[test_ind,'s_vinecomposite'],
+                  vineComm = db[test_ind,'s_vinecommstand'],
+                  ADOSmod = db[test_ind,'s_ados_module']
+                  )
+myCor$ABCI = rowSums(myTest[,c(2,4,8,10,14,19,25,29,34,36,41,47,50,52,57)])
+# Add factor scores for the CFA model fit
+myCor<-cbind(lavPredict(fit1),myCor)
+
+corr.test(myCor, method='pearson', adjust='holm') # whole sample
+corr.test(myCor[myCor$ADOSmod<3,], method='pearson', adjust='none') # poor communication
+corr.test(myCor[myCor$ADOSmod>2,], method='pearson', adjust='none') # good communication
+
+```
+
