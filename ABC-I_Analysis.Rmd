@@ -17,60 +17,16 @@ library('psych')
 library('lavaan')
 ```
 
-## Import and Prepare Data
+## Import Prepared Data
+```{r}
+# Read in prepared data
+# Note, train indices, which split the sample, 
+# have been randomly generated.
+# They are fixed here, to avoid discrepancies in numbers between R Markdown and the original console-based analysis.
+# The sample function in each results in discrepant results.
 
-```{r cars}
-# Read in and prepare data
-db<-read.table(file="../../Raw Data/Stoddard_937dataset_11.27.18_abc.txt",
-               sep="\t",header=TRUE,comment="")
-dbCV<-read.table(file="../../Raw Data/Stoddard_937dataset_11.27.18_edi.txt",
-                 sep="\t",header=TRUE,comment="")
-db[db==9999]<-NA
-db[db==8888]<-NA
-dbCV[dbCV==9999]<-NA
-dbCV[dbCV==8888]<-NA
+load('FinalAnalysisData.RData')
 
-db<-merge(db,dbCV,by="familyid")
-
-hist(db$age, col='blue')
-table(db$a_csex)
-
-# Factor Analysis of Irritability Items
-ABC<-db[,1:61]
-ABC$Miss<-rowSums(is.na(db[,4:61]))
-
-# Remove anyone with missing responses on the ABC > 15%
-ABC<-subset(ABC,Miss<9) #n=758 (1 subj missing 14, 1 missing 49, 177 missing all)
-describe(ABC$age)
-table(ABC$a_csex)
-
-# Count by verbal ability
-table(db[db$familyid %in% ABC$familyid, 's_ados_module']>2)
-describe(db[db$familyid %in% ABC$familyid, 
-            c('s_vinecomposite','s_vinecommstand')])
-
-# Keep 50% for training, 50% for testing
-smp_size<-floor(0.50*nrow(ABC)) #379
-set.seed(252) #Randomly generated seed of 3 digits. sample(100:999,1)
-train_ind <- sample(seq_len(nrow(ABC)), size = smp_size)
-
-myTrain<-ABC[train_ind,4:61] #50% of sample = 379
-table(ABC[train_ind,'a_csex'])
-hist(ABC[train_ind,'age'],
-     main="Distribution of Age",
-     xlab="Age (Years)",
-     col='blue')
-mean(ABC[train_ind,'age'])
-sd(ABC[train_ind,'age'])
-
-myTest<-ABC[-train_ind,4:61] #50% of sample = 379
-table(ABC[-train_ind,'a_csex'])
-hist(ABC[-train_ind,'age'],
-     main="Distribution of Age",
-     xlab="Age (Years)",
-     col='blue')
-mean(ABC[-train_ind,'age'])
-sd(ABC[-train_ind,'age'])
 ```
 
 ##Exploratory Analysis
